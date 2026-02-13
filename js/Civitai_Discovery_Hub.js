@@ -375,12 +375,20 @@ function ensureHiddenSelectionWidget(node) {
 #${uid} .cg-scroll::-webkit-scrollbar{width:10px;height:10px}
 #${uid} .cg-scroll::-webkit-scrollbar-thumb{background:linear-gradient(var(--cg-neon), var(--cg-neon2));border-radius:10px}
 #${uid} .cg-masonry{column-gap:12px;--colw:280px;column-width:var(--colw)}
+#${uid} .cg-view-grid .cg-masonry{column-width:auto;column-gap:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+#${uid} .cg-view-list .cg-masonry{column-width:auto;column-gap:0;display:flex;flex-direction:column;gap:12px}
 #${uid} .cg-card{
   display:inline-block;width:100%;margin:0 0 12px;border:1px solid var(--cg-border);border-radius:14px;overflow:hidden;
   background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));position:relative;break-inside:avoid;opacity:0;transform:translateY(6px);
   transition:opacity .18s ease, transform .18s ease, box-shadow .2s ease;box-shadow:var(--cg-shadow);
   overflow-anchor:none;
 }
+#${uid} .cg-view-grid .cg-card{display:flex;flex-direction:column;height:320px;margin:0}
+#${uid} .cg-view-list .cg-card{display:flex;gap:12px;margin:0}
+#${uid} .cg-view-list .cg-img,#${uid} .cg-view-list .cg-vid{width:240px;flex:0 0 240px;max-height:180px;object-fit:cover}
+#${uid} .cg-view-list .cg-meta{flex:1}
+#${uid} .cg-view-grid .cg-img,#${uid} .cg-view-grid .cg-vid{flex:1;min-height:0;height:100%;object-fit:cover}
+#${uid} .cg-view-grid .cg-meta{margin-top:auto}
 #${uid} .cg-card.show{opacity:1;transform:translateY(0)}
 #${uid} .cg-card:hover{box-shadow:0 0 24px rgba(57,208,255,.13), var(--cg-shadow)}
 #${uid} .cg-card.selected{outline:2px solid var(--cg-neon);outline-offset:-2px;box-shadow:0 0 28px rgba(57,208,255,.15), var(--cg-shadow)}
@@ -451,6 +459,11 @@ function ensureHiddenSelectionWidget(node) {
       <button class="cg-btn toggle cg-toggle-noprompt">Hide no-prompt</button>
       <button class="cg-btn toggle cg-toggle-favonly">Favorites only</button>
 
+      <label>View</label>
+      <button class="cg-btn toggle cg-view-btn" data-view="masonry">Masonry</button>
+      <button class="cg-btn toggle cg-view-btn" data-view="grid">Grid</button>
+      <button class="cg-btn toggle cg-view-btn" data-view="list">List</button>
+
       <button class="cg-btn cg-refresh">Refresh</button>
       <button class="cg-btn cg-toggle-render cg-render-on">Display: ON</button>
     </div>
@@ -475,6 +488,7 @@ function ensureHiddenSelectionWidget(node) {
 
         const $ = (s) => root.querySelector(s);
 
+        const elRoot = root.querySelector(".cg-root");
         const elNSFW = $(".cg-nsfw");
         const elSort = $(".cg-sort");
         const elPeriod = $(".cg-period");
@@ -487,6 +501,7 @@ function ensureHiddenSelectionWidget(node) {
         const elUser = $(".cg-username");
         const elSearch = $(".cg-search");
         const elRefresh = $(".cg-refresh");
+        const elViewButtons = [...root.querySelectorAll(".cg-view-btn")];
         const elStatus = $(".cg-status");
 
         const elScroll = root.querySelector(".cg-scroll");
@@ -516,7 +531,10 @@ function ensureHiddenSelectionWidget(node) {
         let _ioVideo = null;
 
         const LS_RENDER_KEY = `CDH:display:${location.pathname}:${TARGET_CLASS}:${node.id}`;
+        const LS_VIEW_KEY = `CDH:view:${location.pathname}:${TARGET_CLASS}:${node.id}`;
+        const LS_FILTER_KEY = `CDH:filters:${location.pathname}:${TARGET_CLASS}:${node.id}`;
         const LS_SCROLL_KEY = `CDH:scroll:${location.pathname}:${TARGET_CLASS}:${node.id}`;
+        const LS_CACHE_KEY = `CDH:cache:${location.pathname}:${TARGET_CLASS}:${node.id}`;
 
         let inView = true;
         let userTouchedThisView = false;
@@ -616,6 +634,7 @@ function ensureHiddenSelectionWidget(node) {
 
               if (!inView) {
                 saveScrollTopNow();
+                saveCacheState();
               } else {
                 userTouchedThisView = false;
                 restoreScrollTop();
@@ -635,6 +654,40 @@ function ensureHiddenSelectionWidget(node) {
 
         startViewportWatch();
 
+        const readSavedFilters = () => {
+          if (cg.filters && typeof cg.filters === "object") return cg.filters;
+          try {
+            const raw = localStorage.getItem(LS_FILTER_KEY);
+            return raw ? JSON.parse(raw) : {};
+          } catch {
+            return {};
+          }
+        };
+
+        const setSelectValue = (el, value) => {
+          if (value == null || value === "") return;
+          const ok = [...el.options].some(
+            (o) => o.value === value || o.text === value,
+          );
+          if (ok) el.value = value;
+        };
+
+        const savedFilters = readSavedFilters();
+        const savedTag =
+          typeof savedFilters.tags === "string" ? savedFilters.tags : "";
+        setSelectValue(elNSFW, savedFilters.nsfw);
+        setSelectValue(elSort, savedFilters.sort);
+        setSelectValue(elPeriod, savedFilters.period);
+        setSelectValue(elLimitSel, savedFilters.limit);
+        if (typeof savedFilters.username === "string")
+          elUser.value = savedFilters.username;
+        if (typeof savedFilters.videosOnly === "boolean")
+          videosOnly = savedFilters.videosOnly;
+        if (typeof savedFilters.hideNoPrompt === "boolean")
+          hideNoPrompt = savedFilters.hideNoPrompt;
+        if (typeof savedFilters.favoritesOnly === "boolean")
+          favoritesOnly = savedFilters.favoritesOnly;
+
         const normalizeBaseModels = (v) => {
           if (Array.isArray(v))
             return v.map((x) => String(x || "").trim()).filter(Boolean);
@@ -646,7 +699,9 @@ function ensureHiddenSelectionWidget(node) {
           return [];
         };
 
-        let selectedBaseModels = new Set(normalizeBaseModels(cg.base_models));
+        let selectedBaseModels = new Set(
+          normalizeBaseModels(savedFilters.baseModels ?? cg.base_models),
+        );
         let baseModelsOpen = false;
 
         (function populateTags() {
@@ -662,6 +717,27 @@ function ensureHiddenSelectionWidget(node) {
           if ([...elTags.options].some((o) => o.value === keep))
             elTags.value = keep;
         })();
+        if (savedTag && [...elTags.options].some((o) => o.value === savedTag))
+          elTags.value = savedTag;
+
+        const saveFilters = () => {
+          const data = {
+            nsfw: elNSFW.value,
+            sort: elSort.value,
+            period: elPeriod.value,
+            tags: elTags.value,
+            username: elUser.value.trim(),
+            limit: elLimitSel.value,
+            videosOnly,
+            hideNoPrompt,
+            favoritesOnly,
+            baseModels: [...selectedBaseModels],
+          };
+          cg.filters = data;
+          try {
+            localStorage.setItem(LS_FILTER_KEY, JSON.stringify(data));
+          } catch {}
+        };
 
         const renderBaseModels = (filterText = "") => {
           const q = String(filterText || "")
@@ -682,6 +758,7 @@ function ensureHiddenSelectionWidget(node) {
               else selectedBaseModels.delete(m);
               cg.base_models = [...selectedBaseModels];
               updateBaseModelsTrigger();
+              saveFilters();
               reload(true);
             });
             row.appendChild(cb);
@@ -717,6 +794,13 @@ function ensureHiddenSelectionWidget(node) {
 
         updateBaseModelsTrigger();
         renderBaseModels();
+
+        const itemKey = (it) => `image:${keyId(it.id)}`;
+        const MAX_CACHE_ITEMS = 300;
+        let cachedItems = Array.isArray(cg.cached_state?.items)
+          ? cg.cached_state.items
+          : [];
+        let cachedSeen = new Set(cachedItems.map(itemKey));
 
         const loadFavoritesMap = async () => {
           try {
@@ -762,6 +846,61 @@ function ensureHiddenSelectionWidget(node) {
           const v = parseInt(elLimitSel.value || "24", 10);
           if (Number.isNaN(v)) return 24;
           return Math.min(500, Math.max(12, v));
+        };
+
+        const buildFilterKey = () =>
+          JSON.stringify({
+            nsfw: elNSFW.value,
+            sort: elSort.value,
+            period: elPeriod.value,
+            tags: elTags.value,
+            username: elUser.value.trim(),
+            limit: elLimitSel.value,
+            videosOnly,
+            hideNoPrompt,
+            favoritesOnly,
+            baseModels: [...selectedBaseModels].sort(),
+          });
+
+        const saveCacheState = () => {
+          const payload = {
+            items: cachedItems.slice(-MAX_CACHE_ITEMS),
+            cursor,
+            hasMore,
+            favoritesOnly,
+            favOffset,
+            filterKey: buildFilterKey(),
+          };
+          cg.cached_state = payload;
+          try {
+            localStorage.setItem(LS_CACHE_KEY, JSON.stringify(payload));
+          } catch {}
+        };
+
+        const restoreCacheState = () => {
+          let s = cg.cached_state;
+          if (!s || !Array.isArray(s.items)) {
+            try {
+              const raw = localStorage.getItem(LS_CACHE_KEY);
+              s = raw ? JSON.parse(raw) : null;
+            } catch {
+              s = null;
+            }
+          }
+          if (!s || !Array.isArray(s.items)) return false;
+          if (s.filterKey !== buildFilterKey()) return false;
+          cg.cached_state = s;
+          cg.has_loaded_once = true;
+          cachedItems = s.items.slice();
+          cachedSeen = new Set(cachedItems.map(itemKey));
+          cursor = s.cursor ?? null;
+          hasMore =
+            typeof s.hasMore === "boolean" ? s.hasMore : cachedItems.length > 0;
+          favOffset = Number.isFinite(s.favOffset) ? s.favOffset : 0;
+          elGrid.replaceChildren();
+          appendGrid(cachedItems, { fromCache: true });
+          setStatus(`Restored ${cachedItems.length}`);
+          return cachedItems.length > 0;
         };
 
         const makeUrlStream = (cur) => {
@@ -998,7 +1137,8 @@ function ensureHiddenSelectionWidget(node) {
           return d;
         };
 
-        const appendGrid = (items) => {
+        const appendGrid = (items, opts = {}) => {
+          const fromCache = !!opts.fromCache;
           const seen = new Set(
             [...elGrid.querySelectorAll(".cg-card")].map(
               (c) => c.dataset.selkey,
@@ -1006,13 +1146,18 @@ function ensureHiddenSelectionWidget(node) {
           );
           const nodes = [];
           for (const it of items) {
-            const key = `image:${keyId(it.id)}`;
+            const key = itemKey(it);
             if (seen.has(key)) continue;
             const card = makeCard(it);
             nodes.push(card);
             seen.add(key);
+            if (!fromCache && !cachedSeen.has(key)) {
+              cachedItems.push(it);
+              cachedSeen.add(key);
+            }
           }
           if (nodes.length) elGrid.append(...nodes);
+          if (!fromCache) saveCacheState();
         };
 
         const selectItem = (item, cardEl) => {
@@ -1095,6 +1240,7 @@ function ensureHiddenSelectionWidget(node) {
                 ? `Loaded ${items.length} • more available (≈${ms}ms)`
                 : `Loaded ${items.length} • end reached (≈${ms}ms)`,
             );
+            saveCacheState();
           } catch (e) {
             console.error(e);
             hasMore = false;
@@ -1141,6 +1287,7 @@ function ensureHiddenSelectionWidget(node) {
                 ? `Loaded ${slice.length} • ${filtered.length - favOffset} more`
                 : `Loaded ${slice.length} • end reached`,
             );
+            saveCacheState();
           } catch (e) {
             console.error(e);
             hasMore = false;
@@ -1174,6 +1321,9 @@ function ensureHiddenSelectionWidget(node) {
             elGrid.replaceChildren();
             cursor = null;
             hasMore = true;
+            cachedItems = [];
+            cachedSeen = new Set();
+            saveCacheState();
 
             if (resetToTop) {
               lastScrollTop = 0;
@@ -1275,10 +1425,33 @@ function ensureHiddenSelectionWidget(node) {
           bindScroll();
           restoreScrollTop();
 
+          const restored = restoreCacheState();
           if (!cg.has_loaded_once) {
             cg.has_loaded_once = true;
+            if (!restored) await reload(true);
+          } else if (!restored && !elGrid.childElementCount) {
             await reload(true);
           }
+        };
+
+        const setViewMode = (mode) => {
+          const m =
+            mode === "grid" || mode === "list" || mode === "masonry"
+              ? mode
+              : "masonry";
+          elRoot.classList.remove(
+            "cg-view-masonry",
+            "cg-view-grid",
+            "cg-view-list",
+          );
+          elRoot.classList.add(`cg-view-${m}`);
+          try {
+            cg.view_mode = m;
+          } catch {}
+          try {
+            localStorage.setItem(LS_VIEW_KEY, m);
+          } catch {}
+          elViewButtons.forEach((b) => toggleBtn(b, b.dataset.view === m));
         };
 
         node.onResize = function (size) {
@@ -1289,7 +1462,10 @@ function ensureHiddenSelectionWidget(node) {
         };
 
         [elNSFW, elSort, elPeriod, elLimitSel].forEach((x) =>
-          x.addEventListener("change", () => reload(true)),
+          x.addEventListener("change", () => {
+            saveFilters();
+            reload(true);
+          }),
         );
         elBaseModelsSearch.addEventListener("input", () =>
           renderBaseModels(elBaseModelsSearch.value),
@@ -1319,34 +1495,47 @@ function ensureHiddenSelectionWidget(node) {
         elBaseModelsSearch.addEventListener("keydown", (e) => {
           if (e.key === "Escape") setBaseModelsOpen(false);
         });
-        elTags.addEventListener("change", () => reload(true));
+        elTags.addEventListener("change", () => {
+          saveFilters();
+          reload(true);
+        });
         elRefresh.addEventListener("click", () => reload(true));
-        elSearch.addEventListener("click", () => reload(true));
-        elUser.addEventListener(
-          "keydown",
-          (e) => e.key === "Enter" && reload(true),
-        );
+        elSearch.addEventListener("click", () => {
+          saveFilters();
+          reload(true);
+        });
+        elUser.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter") return;
+          saveFilters();
+          reload(true);
+        });
 
         elBtnVideo.addEventListener("click", () => {
           videosOnly = !videosOnly;
           toggleBtn(elBtnVideo, videosOnly);
+          saveFilters();
           reload(true);
         });
 
         elBtnNoPrompt.addEventListener("click", () => {
           hideNoPrompt = !hideNoPrompt;
           toggleBtn(elBtnNoPrompt, hideNoPrompt);
+          saveFilters();
           reload(true);
         });
 
         elBtnFavOnly.addEventListener("click", async () => {
           favoritesOnly = !favoritesOnly;
           toggleBtn(elBtnFavOnly, favoritesOnly);
+          saveFilters();
           await reload(true);
         });
 
         elBtnRender.addEventListener("click", () =>
           setRenderState(!renderEnabled),
+        );
+        elViewButtons.forEach((b) =>
+          b.addEventListener("click", () => setViewMode(b.dataset.view)),
         );
 
         const ro = new ResizeObserver(() => {
@@ -1363,6 +1552,7 @@ function ensureHiddenSelectionWidget(node) {
         const _prevOnRemoved = node.onRemoved;
         node.onRemoved = function () {
           saveScrollTopNow();
+          saveCacheState();
           stopViewportWatch();
           try {
             _ioSentinel?.disconnect();
@@ -1394,6 +1584,14 @@ function ensureHiddenSelectionWidget(node) {
             typeof cg.display_on === "boolean" ? cg.display_on : null;
           const initOn =
             saved == null ? (propVal == null ? true : propVal) : saved === "1";
+
+          let viewSaved = null;
+          try {
+            viewSaved = localStorage.getItem(LS_VIEW_KEY);
+          } catch {}
+          const propView = typeof cg.view_mode === "string" ? cg.view_mode : "";
+          const initView = viewSaved || propView || "masonry";
+          setViewMode(initView);
 
           await setRenderState(initOn);
         })();
