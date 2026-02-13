@@ -317,6 +317,7 @@ async def get_civitai_images_stream(request):
         username = (request.query.get("username", "") or "").strip()
         tags_q = (request.query.get("tags", "") or "").strip()
         query_q = (request.query.get("query", "") or "").strip()
+        base_models_q = (request.query.get("baseModels", "") or "").strip()
 
         include_videos = truthy(request.query.get("include_videos", "false"))
         hide_no_prompt = truthy(request.query.get("hide_no_prompt", "false"))
@@ -354,6 +355,8 @@ async def get_civitai_images_stream(request):
                 p["modelId"] = model_id
             if model_ver_id:
                 p["modelVersionId"] = model_ver_id
+            if base_models_q:
+                p["baseModels"] = base_models_q
             if cur:
                 p["cursor"] = cur
             return p
